@@ -1,0 +1,552 @@
+#This code has been run into google colab notebook. 
+
+#!/usr/bin/env python
+"""
+Project: Streaming Platforms Analysis
+Author: Alam Shihab
+Description: This script performs data cleaning, exploratory data analysis, statistical tests,
+             and visualization on the MoviesOnStreamingPlatforms dataset.
+"""
+
+# ==================================
+# 1. Setup and Data Loading
+# ==================================
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import chi2_contingency, shapiro, kstest, normaltest, mannwhitneyu
+import scipy.stats as stats
+
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Set file path (adjust as needed)
+file_path = '/content/drive/My Drive/Colab Notebooks/MoviesOnStreamingPlatforms.csv'
+data = pd.read_csv(file_path)
+
+# ==================================
+# 2. Exploratory Data Analysis (EDA)
+# ==================================
+def exploratory_data_analysis(data):
+    """Display basic dataset information, data types, unique values, and the first 10 rows."""
+    print("=== Data Information ===")
+    data.info()
+    print("\n=== Data Types ===")
+    print(data.dtypes)
+    print("\n=== Unique Values per Column ===")
+    for column in data.columns:
+        print(f"Unique values in '{column}':")
+        print(data[column].unique())
+        print()
+    print("=== First 10 Rows ===")
+    print(data.head(10))
+
+exploratory_data_analysis(data)
+
+# ==================================
+# 3. Missing Data Analysis
+# ==================================
+def missing_data_analysis(data):
+    """Visualize missing data and display a summary table."""
+    total_rows = len(data)
+    missing_values = data.isnull().sum()
+    present_values = total_rows - missing_values
+    missing_summary = pd.DataFrame({
+        "Variable": data.columns,
+        "Present Values": present_values.values,
+        "Missing Values": missing_values.values
+    })
+
+    # Bar Chart Visualization
+    plt.figure(figsize=(10, 6))
+    melted = missing_summary.melt(id_vars="Variable", var_name="Status", value_name="Count")
+    sns.barplot(data=melted, x="Variable", y="Count", hue="Status", palette=["blue", "red"])
+    plt.title("Presence and Missing Values per Column", fontsize=14)
+    plt.xlabel("Variables", fontsize=12)
+    plt.ylabel("Count", fontsize=12)
+    plt.legend(title="Data Status", fontsize=10)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+    # Display Summary Table as a Figure
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.axis("tight")
+    ax.axis("off")
+    table = ax.table(cellText=missing_summary.values, colLabels=missing_summary.columns,
+                     cellLoc="center", loc="center")
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.auto_set_column_width(col=list(range(len(missing_summary.columns))))
+    plt.show()
+
+missing_data_analysis(data)
+
+# ==================================
+# 4. Data Cleaning and Feature Engineering
+# ==================================
+def data_cleaning_feature_engineering(data):
+    """
+    - Drop unnecessary columns.
+    - Check for duplicates.
+    - Extract and convert 'Rotten Tomatoes' score.
+    - Clean and extract numeric values from the 'Age' column.
+    """
+    # Drop the first two columns plus 'ID' and 'Type'
+    cols_to_drop = data.columns[[0, 1]].tolist() + ['ID', 'Type']
+    df = data.drop(columns=cols_to_drop)
+    print("=== Data After Dropping Unnecessary Columns ===")
+    print(df.head(10))
+
+    # Check duplicate rows
+    num_duplicates = df.duplicated().sum()
+    print(f"Number of duplicate rows: {num_duplicates}")
+
+    # Extract Rotten Tomatoes score (convert to float)
+    df['Rotten_tomatoes_score'] = df['Rotten Tomatoes'].str.extract(r'(\d+)', expand=False).astype(float)
+
+    # Clean the Age column (replace 'all' with '0') and extract numeric age
+    df['Age'] = df['Age'].replace('all', '0')
+    df['Numeric_Age'] = df['Age'].str.extract(r'(\d+)', expand=False).astype(float)
+
+    return df
+
+df = data_cleaning_feature_engineering(data)
+
+# For further analysis, drop rows with missing Age values.
+df1 = df.dropna(subset=['Age'])
+print("Unique Age values after cleaning:")
+print(df1['Age'].unique())
+print("Random sample from cleaned data:")
+print(df1.sample(10))
+
+# ==================================
+# 5. Data Filtering: Platforms
+# ==================================
+def filter_platforms(df):
+    """Filter the dataset to include only rows where Netflix or Disney+ is available."""
+    filtered_df = df[(df['Netflix'] == 1) | (df['Disney+'] == 1)]
+    print("=== Filtered DataFrame Information ===")
+    print(filtered_df.info())
+    return filtered_df
+
+df_filtered = filter_platforms(df1)
+
+# ==================================
+# 6. Descriptive Statistics for Age Restrictions
+# ==================================
+def age_restriction_statistics(df):
+    """
+    Calculate and print descriptive statistics for age restrictions for both Netflix and Disney+.
+    Returns the mean ages for further use.
+    """
+    mean_age_netflix = df[df['Netflix'] == 1]['Numeric_Age'].mean()
+    mean_age_disney = df[df['Disney+'] == 1]['Numeric_Age'].mean()
+
+    range_age_netflix = df[df['Netflix'] == 1]['Numeric_Age'].max() - df[df['Netflix'] == 1]['Numeric_Age'].min()
+    range_age_disney = df[df['Disney+'] == 1]['Numeric_Age'].max() - df[df['Disney+'] == 1]['Numeric_Age'].min()
+
+    std_dev_netflix = df[df['Netflix'] == 1]['Numeric_Age'].std()
+    std_dev_disney = df[df['Disney+'] == 1]['Numeric_Age'].std()
+
+    variance_netflix = df[df['Netflix'] == 1]['Numeric_Age'].var()
+    variance_disney = df[df['Disney+'] == 1]['Numeric_Age'].var()
+
+    print("=== Descriptive Statistics for Disney+ ===")
+    print("Mean age:", mean_age_disney)
+    print("Range of ages:", range_age_disney)
+    print("Standard deviation:", std_dev_disney)
+    print("Variance:", variance_disney)
+
+    print("\n=== Descriptive Statistics for Netflix ===")
+    print("Mean age:", mean_age_netflix)
+    print("Range of ages:", range_age_netflix)
+    print("Standard deviation:", std_dev_netflix)
+    print("Variance:", variance_netflix)
+
+    return mean_age_disney, mean_age_netflix
+
+mean_age_disney, mean_age_netflix = age_restriction_statistics(df1)
+
+# ==================================
+# 7. Chi-Square Tests for Age (Original Values)
+# ==================================
+def chi_square_age_tests(df):
+    """
+    Create contingency tables for Age (original values) vs. platform availability (Disney+ and Netflix)
+    and perform chi-square tests.
+    """
+    # Contingency tables for Age
+    contingency_disney = pd.crosstab(df['Age'], df['Disney+'])
+    contingency_netflix = pd.crosstab(df['Age'], df['Netflix'])
+
+    # Calculate row percentages
+    percent_disney = contingency_disney.div(contingency_disney.sum(axis=1), axis=0) * 100
+    percent_netflix = contingency_netflix.div(contingency_netflix.sum(axis=1), axis=0) * 100
+
+    # Combine totals and percentages
+    disney_table = contingency_disney.rename(columns={0: "Disney_No", 1: "Disney_Yes"})
+    disney_table["Disney_No_%"] = percent_disney[0]
+    disney_table["Disney_Yes_%"] = percent_disney[1]
+
+    netflix_table = contingency_netflix.rename(columns={0: "Netflix_No", 1: "Netflix_Yes"})
+    netflix_table["Netflix_No_%"] = percent_netflix[0]
+    netflix_table["Netflix_Yes_%"] = percent_netflix[1]
+
+    final_table = disney_table.merge(netflix_table, left_index=True, right_index=True)
+
+    # Chi-square tests
+    chi2_disney, p_disney, dof_disney, expected_disney = chi2_contingency(contingency_disney)
+    chi2_netflix, p_netflix, dof_netflix, expected_netflix = chi2_contingency(contingency_netflix)
+
+    print("=== Contingency Table (Original Age) ===")
+    print(final_table)
+    print("\n=== Chi-Square Test Results (Original Age) ===")
+    print(f"Disney: Chi2 = {chi2_disney:.2f}, p = {p_disney:.4f}, dof = {dof_disney}")
+    print("Expected Frequencies for Disney:")
+    print(expected_disney)
+    print(f"\nNetflix: Chi2 = {chi2_netflix:.2f}, p = {p_netflix:.4f}, dof = {dof_netflix}")
+    print("Expected Frequencies for Netflix:")
+    print(expected_netflix)
+
+chi_square_age_tests(df1)
+
+# ==================================
+# 8. Re-categorize Age and Chi-Square Tests
+# ==================================
+def recategorize_age(age):
+    """Recategorize age into groups for further analysis."""
+    if age == "0":
+        return "No age restriction"
+    elif age in ["7+", "13+"]:
+        return "age <16+"
+    elif age in ["16+", "18+"]:
+        return "age >16+"
+    else:
+        return "Other"
+
+# Apply recategorization to the Age column
+df1["Age_Category"] = df1["Age"].apply(recategorize_age)
+
+def chi_square_age_category_tests(df):
+    """
+    Create contingency tables for re-categorized Age vs. platform availability and perform chi-square tests.
+    Also, generate a clustered bar chart.
+    """
+    contingency_disney = pd.crosstab(df['Age_Category'], df['Disney+'])
+    contingency_netflix = pd.crosstab(df['Age_Category'], df['Netflix'])
+
+    percent_disney = contingency_disney.div(contingency_disney.sum(axis=1), axis=0) * 100
+    percent_netflix = contingency_netflix.div(contingency_netflix.sum(axis=1), axis=0) * 100
+
+    disney_table = contingency_disney.rename(columns={0: "Disney_No", 1: "Disney_Yes"})
+    disney_table["Disney_No_%"] = percent_disney[0]
+    disney_table["Disney_Yes_%"] = percent_disney[1]
+
+    netflix_table = contingency_netflix.rename(columns={0: "Netflix_No", 1: "Netflix_Yes"})
+    netflix_table["Netflix_No_%"] = percent_netflix[0]
+    netflix_table["Netflix_Yes_%"] = percent_netflix[1]
+
+    final_table = disney_table.merge(netflix_table, left_index=True, right_index=True)
+
+    chi2_disney, p_disney, dof_disney, expected_disney = chi2_contingency(contingency_disney)
+    chi2_netflix, p_netflix, dof_netflix, expected_netflix = chi2_contingency(contingency_netflix)
+
+    print("=== Contingency Table (Re-categorized Age) ===")
+    print(final_table)
+    print("\n=== Chi-Square Test Results (Re-categorized Age) ===")
+    print(f"Disney: Chi2 = {chi2_disney:.2f}, p = {p_disney:.4f}, dof = {dof_disney}")
+    print("Expected Frequencies for Disney:")
+    print(expected_disney)
+    print(f"\nNetflix: Chi2 = {chi2_netflix:.2f}, p = {p_netflix:.4f}, dof = {dof_netflix}")
+    print("Expected Frequencies for Netflix:")
+    print(expected_netflix)
+
+    # Clustered Bar Chart
+    categories = contingency_disney.index
+    x = np.arange(len(categories))
+    width = 0.35
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(x - width/2, contingency_disney[1], width, label='Disney+ Count')
+    ax.bar(x + width/2, contingency_netflix[1], width, label='Netflix Count')
+    for i, category in enumerate(categories):
+        ax.text(x[i] - width/2, contingency_disney[1][i] + 1, f"{percent_disney[1][i]:.1f}%", ha='center', color='blue')
+        ax.text(x[i] + width/2, contingency_netflix[1][i] + 1, f"{percent_netflix[1][i]:.1f}%", ha='center', color='green')
+    ax.set_xlabel('Age Categories')
+    ax.set_ylabel('Count')
+    ax.set_title('Count and Percentage by Re-Categorized Age for Disney+ and Netflix')
+    ax.set_xticks(x)
+    ax.set_xticklabels(categories)
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+chi_square_age_category_tests(df1)
+
+# ==================================
+# 9. Combined Platform Analysis Using Chi-Square Test
+# ==================================
+def combined_platform_chi_square(df):
+    """
+    Create a new 'Platform' variable combining Disney+ and Netflix,
+    then perform a chi-square test on Age_Category versus Platform.
+    """
+    df['Platform'] = df.apply(
+        lambda row: 'Disney' if row['Disney+'] == 1 else ('Netflix' if row['Netflix'] == 1 else None),
+        axis=1
+    )
+    df = df.dropna(subset=['Platform'])
+    contingency_table = pd.crosstab(df['Age_Category'], df['Platform'])
+    chi2, p, dof, expected = chi2_contingency(contingency_table)
+    print("=== Contingency Table (Combined Platform) ===")
+    print(contingency_table)
+    print("\n=== Chi-Square Test Results (Combined Platform) ===")
+    print(f"Chi2 = {chi2:.2f}, p = {p:.4f}, dof = {dof}")
+    print("Expected Frequencies:")
+    print(expected)
+
+combined_platform_chi_square(df1)
+
+# ==================================
+# 10. Rotten Tomatoes Score Analysis
+# ==================================
+def rotten_tomatoes_analysis(df):
+    """
+    - Convert Rotten Tomatoes score into categorical bins.
+    - Create a 'Platform' variable.
+    - Create a contingency table for Rotten Tomatoes categories vs. Platform.
+    - Perform a chi-square test and handle missing values by imputation.
+    """
+    # Create Rotten Tomatoes category
+    bins = [0, 40, 70, 100]
+    labels = ['Low', 'Average', 'High']
+    df['RT_Category'] = pd.cut(df['Rotten_tomatoes_score'], bins=bins, labels=labels, right=True)
+
+    # Create Platform variable
+    df['Platform'] = df.apply(
+        lambda row: 'Disney' if row['Disney+'] == 1 else ('Netflix' if row['Netflix'] == 1 else None),
+        axis=1
+    )
+    df = df.dropna(subset=['Platform'])
+
+    contingency_table = pd.crosstab(df['RT_Category'], df['Platform'])
+    print("=== Contingency Table for Rotten Tomatoes Categories ===")
+    print(contingency_table)
+    chi2, p, dof, expected = chi2_contingency(contingency_table)
+    print("\n=== Chi-Square Test Results for Rotten Tomatoes Categories ===")
+    print(f"Chi2 = {chi2:.2f}, p = {p:.4f}, dof = {dof}")
+    print("Expected Frequencies:")
+    print(expected)
+
+    # Analyze missing values in Rotten Tomatoes score
+    missing_values = df['Rotten_tomatoes_score'].isnull().sum()
+    total_non_missing = df['Rotten_tomatoes_score'].notnull().sum()
+    missing_percentage = (missing_values / (missing_values + total_non_missing)) * 100
+    print("\n=== Rotten Tomatoes Score Missing Data ===")
+    print("Total Non-Missing:", total_non_missing)
+    print("Total Missing:", missing_values)
+    print("Missing Percentage:", missing_percentage)
+
+    # Impute missing values with the mean
+    mean_value = df['Rotten_tomatoes_score'].mean()
+    df['Rotten_tomatoes_score'].fillna(mean_value, inplace=True)
+    print("\nAfter imputation, missing values count:", df['Rotten_tomatoes_score'].isnull().sum())
+
+    return df
+
+df = rotten_tomatoes_analysis(df)
+
+# ==================================
+# 11. Descriptive Statistics & Visualizations for Rotten Tomatoes Score
+# ==================================
+def rotten_tomatoes_statistics_visualizations(df):
+    """Compute statistics and generate visualizations for Rotten Tomatoes scores for both platforms."""
+    netflix_scores = df[df['Netflix'] == 1]['Rotten_tomatoes_score'].dropna()
+    disney_scores = df[df['Disney+'] == 1]['Rotten_tomatoes_score'].dropna()
+
+    # Descriptive Statistics
+    stats_netflix = {
+        "Mean": netflix_scores.mean(),
+        "Median": netflix_scores.median(),
+        "Mode": stats.mode(netflix_scores).mode[0] if isinstance(stats.mode(netflix_scores).mode, np.ndarray) else stats.mode(netflix_scores).mode,
+        "Std Dev": netflix_scores.std()
+    }
+    stats_disney = {
+        "Mean": disney_scores.mean(),
+        "Median": disney_scores.median(),
+        "Mode": stats.mode(disney_scores).mode[0] if isinstance(stats.mode(disney_scores).mode, np.ndarray) else stats.mode(disney_scores).mode,
+        "Std Dev": disney_scores.std()
+    }
+    print("=== Rotten Tomatoes Score Statistics for Netflix ===")
+    for k, v in stats_netflix.items():
+        print(f"{k}: {v:.2f}")
+    print("\n=== Rotten Tomatoes Score Statistics for Disney+ ===")
+    for k, v in stats_disney.items():
+        print(f"{k}: {v:.2f}")
+
+    # Histogram for Disney+
+    plt.figure(figsize=(8, 6))
+    plt.hist(disney_scores, bins=10, color='blue', edgecolor='black', alpha=0.7)
+    plt.xlabel('Rotten Tomatoes Score', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title('Histogram of Rotten Tomatoes Scores for Disney+', fontsize=14)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+    # Histogram for Netflix
+    plt.figure(figsize=(8, 6))
+    plt.hist(netflix_scores, bins=10, color='red', edgecolor='black', alpha=0.7)
+    plt.xlabel('Rotten Tomatoes Score', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title('Histogram of Rotten Tomatoes Scores for Netflix', fontsize=14)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+    # Scatter Plot for both platforms
+    disney_x = np.arange(len(disney_scores))
+    netflix_x = np.arange(len(netflix_scores))
+    plt.figure(figsize=(10, 6))
+    plt.scatter(disney_x, disney_scores, color='blue', label='Disney+', alpha=0.7)
+    plt.scatter(netflix_x, netflix_scores, color='red', label='Netflix', alpha=0.7)
+    plt.xlabel('Index (Arbitrary Order)', fontsize=12)
+    plt.ylabel('Rotten Tomatoes Score', fontsize=12)
+    plt.title('Scatter Plot of Rotten Tomatoes Scores', fontsize=14)
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+    # Box Plot for both platforms
+    plt.figure(figsize=(8, 6))
+    plt.boxplot([disney_scores, netflix_scores], labels=['Disney+', 'Netflix'], patch_artist=True)
+    plt.title('Box Plot of Rotten Tomatoes Scores')
+    plt.ylabel('Rotten Tomatoes Score')
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.show()
+
+    print(f"Number of Disney+ entries: {len(disney_scores)}")
+    print(f"Number of Netflix entries: {len(netflix_scores)}")
+
+rotten_tomatoes_statistics_visualizations(df)
+
+# ==================================
+# 12. Descriptive Statistics & Visualizations for Age Restrictions
+# ==================================
+def age_statistics_visualizations(df):
+    """Compute statistics and generate visualizations for age restrictions for both platforms."""
+    netflix_ages = df1.loc[df1["Netflix"] == 1, "Numeric_Age"]
+    disney_ages = df1.loc[df1["Disney+"] == 1, "Numeric_Age"]
+
+    print("=== Netflix Age Descriptive Statistics ===")
+    print(netflix_ages.describe())
+    print("\n=== Disney+ Age Descriptive Statistics ===")
+    print(disney_ages.describe())
+    print(f"\nNetflix Coefficient of Variation: {netflix_ages.std() / netflix_ages.mean():.2f}")
+    print(f"Disney+ Coefficient of Variation: {disney_ages.std() / disney_ages.mean():.2f}")
+
+    # Boxplot
+    sns.boxplot(data=[netflix_ages, disney_ages], palette="coolwarm")
+    plt.xticks([0, 1], ["Netflix", "Disney+"])
+    plt.title("Boxplot: Age Restriction Scores")
+    plt.ylabel("Age Restriction Scores")
+    plt.show()
+
+    # Histogram
+    sns.histplot(netflix_ages, color="blue", kde=True, label="Netflix", bins=10)
+    sns.histplot(disney_ages, color="orange", kde=True, label="Disney+", bins=10)
+    plt.legend()
+    plt.title("Histogram: Age Restriction Scores")
+    plt.xlabel("Age Restriction Scores")
+    plt.ylabel("Frequency")
+    plt.show()
+
+age_statistics_visualizations(df)
+
+# ==================================
+# 13. Normality Tests for Age Restrictions & Rotten Tomatoes Scores
+# ==================================
+def normality_tests(df):
+    """Perform normality tests for age restrictions and Rotten Tomatoes scores."""
+    # For Age Restrictions (using Numeric_Age from df1)
+    netflix_ages = df1.loc[df1["Netflix"] == 1, "Numeric_Age"]
+    disney_ages = df1.loc[df1["Disney+"] == 1, "Numeric_Age"]
+
+    print("=== Normality Tests for Age Restrictions ===")
+    print("Netflix:")
+    print(f"Shapiro-Wilk Test: Statistic={shapiro(netflix_ages).statistic:.4f}, p-value={shapiro(netflix_ages).pvalue:.4f}")
+    print(f"Kolmogorov-Smirnov Test: Statistic={kstest(netflix_ages, 'norm').statistic:.4f}, p-value={kstest(netflix_ages, 'norm').pvalue:.4f}")
+    print(f"D'Agostino and Pearson's Test: Statistic={normaltest(netflix_ages).statistic:.4f}, p-value={normaltest(netflix_ages).pvalue:.4f}")
+
+    print("\nDisney+:")
+    print(f"Shapiro-Wilk Test: Statistic={shapiro(disney_ages).statistic:.4f}, p-value={shapiro(disney_ages).pvalue:.4f}")
+    print(f"Kolmogorov-Smirnov Test: Statistic={kstest(disney_ages, 'norm').statistic:.4f}, p-value={kstest(disney_ages, 'norm').pvalue:.4f}")
+    print(f"D'Agostino and Pearson's Test: Statistic={normaltest(disney_ages).statistic:.4f}, p-value={normaltest(disney_ages).pvalue:.4f}")
+
+    # For Rotten Tomatoes Scores
+    netflix_scores = df.loc[df["Netflix"] == 1, "Rotten_tomatoes_score"]
+    disney_scores = df.loc[df["Disney+"] == 1, "Rotten_tomatoes_score"]
+
+    print("\n=== Normality Tests for Rotten Tomatoes Scores ===")
+    print("Netflix:")
+    print(f"Shapiro-Wilk Test: Statistic={shapiro(netflix_scores).statistic:.4f}, p-value={shapiro(netflix_scores).pvalue:.4f}")
+    print(f"Kolmogorov-Smirnov Test: Statistic={kstest(netflix_scores, 'norm').statistic:.4f}, p-value={kstest(netflix_scores, 'norm').pvalue:.4f}")
+    print(f"D'Agostino and Pearson's Test: Statistic={normaltest(netflix_scores).statistic:.4f}, p-value={normaltest(netflix_scores).pvalue:.4f}")
+
+    print("\nDisney+:")
+    print(f"Shapiro-Wilk Test: Statistic={shapiro(disney_scores).statistic:.4f}, p-value={shapiro(disney_scores).pvalue:.4f}")
+    print(f"Kolmogorov-Smirnov Test: Statistic={kstest(disney_scores, 'norm').statistic:.4f}, p-value={kstest(disney_scores, 'norm').pvalue:.4f}")
+    print(f"D'Agostino and Pearson's Test: Statistic={normaltest(disney_scores).statistic:.4f}, p-value={normaltest(disney_scores).pvalue:.4f}")
+
+normality_tests(df)
+
+# ==================================
+# 14. Comparative Statistical Tests Between Platforms
+# ==================================
+def comparative_tests(df):
+    """
+    Compare Age restrictions and Rotten Tomatoes scores between Disney+ and Netflix
+    using either a Mann-Whitney U test or an independent t-test, with Holm-Bonferroni correction.
+    """
+    # Age Restriction Comparison
+    age_mapping = {"0": 0, "7+": 1, "13+": 2, "16+": 3, "18+": 4, "all": 0}
+    disney_ages = df1.loc[df1["Disney+"] == 1, "Age"].map(age_mapping)
+    netflix_ages = df1.loc[df1["Netflix"] == 1, "Age"].map(age_mapping)
+    age_stat, age_p = mannwhitneyu(disney_ages, netflix_ages, alternative='less')
+
+    # Rotten Tomatoes Score Comparison
+    netflix_scores = df.loc[df["Netflix"] == 1, "Rotten_tomatoes_score"]
+    disney_scores = df.loc[df["Disney+"] == 1, "Rotten_tomatoes_score"]
+
+    # Check normality for scores and choose the appropriate test
+    _, netflix_normal = shapiro(netflix_scores)
+    _, disney_normal = shapiro(disney_scores)
+    if netflix_normal > 0.05 and disney_normal > 0.05:
+        score_stat, score_p = stats.ttest_ind(disney_scores, netflix_scores, equal_var=False)
+        test_used = "Independent t-test"
+    else:
+        score_stat, score_p = mannwhitneyu(disney_scores, netflix_scores, alternative='two-sided')
+        test_used = "Mann-Whitney U test"
+
+    # Holm-Bonferroni Correction for the two tests
+    p_values = [age_p, score_p]
+    sorted_indices = sorted(range(len(p_values)), key=lambda i: p_values[i])
+    adjusted_p_values = [None] * len(p_values)
+    for i, idx in enumerate(sorted_indices):
+        adjusted_p_values[idx] = min(p_values[idx] * (len(p_values) - i), 1)
+
+    print(f"=== Age Restriction Test (Mann-Whitney U) ===")
+    print(f"Statistic = {age_stat}, p-value = {age_p}, adjusted p-value = {adjusted_p_values[0]}")
+    print(f"\n=== Rotten Tomatoes {test_used} ===")
+    print(f"Statistic = {score_stat}, p-value = {score_p}, adjusted p-value = {adjusted_p_values[1]}")
+
+comparative_tests(df)
+
+# ==================================
+# End of Analysis
+# ==================================
+print("Analysis Completed.")
